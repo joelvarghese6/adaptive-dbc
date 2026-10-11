@@ -5,12 +5,14 @@
   "packageManager": "pnpm@12.3.4",
   "scripts": {
     "dev": "turbo run dev",
+    "web": "pnpm --filter @adaptive/web dev",
     "build": "turbo run build",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test"
   },
   "devDependencies": {
+    "tsx": "^4.19.3",
     "turbo": "^2.5.4",
     "typescript": "5.7.3"
   }

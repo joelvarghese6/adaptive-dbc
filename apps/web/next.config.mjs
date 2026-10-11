@@ -1,5 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  transpilePackages: ['@adaptive/shared'],
   typescript: {
     ignoreBuildErrors: true,
   },

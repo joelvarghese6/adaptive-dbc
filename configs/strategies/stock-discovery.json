@@ -1,1 +1,1 @@
-﻿{ "name": "TODO", "version": 1, "note": "Scaffolded during monorepo migration - fill in strategy params" }
+﻿{"assetType":"STOCK","strategyId":"STOCK_DISCOVERY_V1","strategyName":"Stock Discovery","baseFeeBps":50,"dynamicFeeEnabled":true,"migrationTarget":"DAMM_V2","migrationMultiple":2,"defaultInitialMarketCap":500000,"note":"Anchored discovery around the external reference valuation."}
