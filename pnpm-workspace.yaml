@@ -1,5 +1,9 @@
-pmOnFail: ignore
-
-minimumReleaseAgeExclude:
-  - '@next/*'
-  - next
+packages:
+  - 'apps/*'
+  - 'packages/*'
+  - 'services/*'
+allowBuilds:
+  bigint-buffer: true
+  bufferutil: true
+  esbuild: true
+  utf-8-validate: true

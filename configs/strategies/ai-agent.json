@@ -1,0 +1,1 @@
+﻿{"assetType":"AI_AGENT","strategyId":"AI_AGENT_V1","strategyName":"AI Agent","baseFeeBps":150,"dynamicFeeEnabled":true,"migrationTarget":"DAMM_V2","migrationMultiple":3,"defaultInitialMarketCap":250000,"note":"Wider migration multiple for narrative-driven volatility."}

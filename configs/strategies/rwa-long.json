@@ -1,0 +1,1 @@
+﻿{"assetType":"RWA","strategyId":"RWA_LONG_V1","strategyName":"RWA Long","baseFeeBps":100,"dynamicFeeEnabled":true,"migrationTarget":"DAMM_V2","migrationMultiple":1.25,"defaultInitialMarketCap":1000000,"note":"Gradual price discovery; moderate initial fee; immutable token authority; SPL token."}

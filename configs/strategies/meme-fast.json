@@ -1,0 +1,1 @@
+﻿{"assetType":"MEME","strategyId":"MEME_FAST_V1","strategyName":"Meme Fast","baseFeeBps":200,"dynamicFeeEnabled":true,"migrationTarget":"DAMM_V2","migrationMultiple":5,"defaultInitialMarketCap":100000,"note":"Steep fast curve for assets with no reference valuation."}
