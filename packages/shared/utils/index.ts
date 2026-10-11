@@ -7,6 +7,9 @@ export type ErrorCode =
   | "RPC_ERROR"
   | "TRANSACTION_ERROR"
   | "METEORA_ERROR"
+  | "PARTIAL_DEPLOYMENT"
+  | "CHECKPOINT_ERROR"
+  | "RESUME_ERROR"
   | "SIMULATION_ERROR";
 
 export class AdaptiveError extends Error {
@@ -56,9 +59,76 @@ export class MeteoraError extends AdaptiveError {
   }
 }
 
+export interface PartialDeploymentErrorParams {
+  launchId: string;
+  /** Base mint that already exists on-chain. Never create another one. */
+  baseMint: string;
+  message: string;
+  configAddress?: string | null;
+  poolAddress?: string | null;
+  transactionSignatures?: string[];
+  recovery?: string;
+}
+
+/**
+ * A devnet/mainnet deployment failed *after* creating on-chain state (at least
+ * the base mint). Distinguishes a partial launch from a launch that never
+ * started, and carries everything needed to recover the existing mint.
+ */
+export class PartialDeploymentError extends AdaptiveError {
+  readonly launchId: string;
+  readonly baseMint: string;
+  readonly configAddress: string | null;
+  readonly poolAddress: string | null;
+  readonly transactionSignatures: string[];
+  readonly recovery: string;
+
+  constructor(params: PartialDeploymentErrorParams) {
+    super("PARTIAL_DEPLOYMENT", params.message, {
+      launchId: params.launchId,
+      baseMint: params.baseMint,
+      configAddress: params.configAddress ?? null,
+      poolAddress: params.poolAddress ?? null,
+      transactionSignatures: (params.transactionSignatures ?? []).join(","),
+    });
+    this.launchId = params.launchId;
+    this.baseMint = params.baseMint;
+    this.configAddress = params.configAddress ?? null;
+    this.poolAddress = params.poolAddress ?? null;
+    this.transactionSignatures = params.transactionSignatures ?? [];
+    this.recovery =
+      params.recovery ??
+      `A base mint (${params.baseMint}) already exists for launch ${params.launchId}. ` +
+        "Do not create another mint: reuse this launch id and inspect the existing on-chain state before retrying.";
+  }
+}
+
 export class SimulationError extends AdaptiveError {
   constructor(message: string, details?: Record<string, string | number | boolean | null>) {
     super("SIMULATION_ERROR", message, details);
+  }
+}
+
+/**
+ * A durable deployment checkpoint (or launch store) could not be read or
+ * written, or was found corrupt. Callers must fail safe: a corrupt checkpoint
+ * is never treated as "no checkpoint", because that would allow a second mint.
+ */
+export class CheckpointError extends AdaptiveError {
+  constructor(message: string, details?: Record<string, string | number | boolean | null>) {
+    super("CHECKPOINT_ERROR", message, details);
+  }
+}
+
+/**
+ * A partial launch could not be safely resumed: the checkpoint and the chain
+ * disagree, the recorded mint/authority is not what a resume expects, or an
+ * on-chain read was inconclusive. Refusing is always safer than guessing —
+ * resolving this wrong could create a second base mint or a duplicate pool.
+ */
+export class ResumeError extends AdaptiveError {
+  constructor(message: string, details?: Record<string, string | number | boolean | null>) {
+    super("RESUME_ERROR", message, details);
   }
 }
 

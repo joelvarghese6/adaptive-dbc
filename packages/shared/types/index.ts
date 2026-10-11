@@ -64,7 +64,9 @@ export type LaunchStatus =
   | "deploying"
   | "live"
   | "graduated"
-  | "failed";
+  | "failed"
+  /** On-chain state was created, but deployment did not finish. */
+  | "partially_deployed";
 
 export type TransactionState =
   | "preparing"

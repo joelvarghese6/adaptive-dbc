@@ -1,5 +1,5 @@
 ﻿import type { AssetProfile, Launch } from "@adaptive/shared";
-import { log, parseAssetProfile } from "@adaptive/shared";
+import { PartialDeploymentError, log, parseAssetProfile } from "@adaptive/shared";
 import { recommendStrategy } from "@adaptive/strategy-engine";
 import { runSimulation } from "@adaptive/simulation-engine";
 import { buildLaunchConfig, deployLaunch, getDbcPool } from "@adaptive/meteora";
@@ -56,11 +56,27 @@ export interface DeployOptions {
 
 export async function deployLaunchById(id: string, options: DeployOptions = {}): Promise<Launch> {
   const launch = requireLaunch(id);
+
+  // Never create a second base mint for a launch that already has on-chain
+  // state; recover the existing mint instead.
+  if (launch.deployment?.baseMint) {
+    throw new PartialDeploymentError({
+      launchId: id,
+      baseMint: launch.deployment.baseMint,
+      configAddress: launch.deployment.configAddress || null,
+      poolAddress: launch.deployment.poolAddress || null,
+      transactionSignatures: launch.deployment.transactionSignatures,
+      message: `Launch ${id} already has a base mint (${launch.deployment.baseMint}); refusing to create another.`,
+    });
+  }
+
   const strategy = launch.strategy ?? recommendStrategy(launch.asset);
   updateLaunchRecord(id, { strategy, status: "deploying", dataSource: "mock" });
 
+  const rpcUrl = options.rpcUrl ?? getRpcUrl();
+  const network: "devnet" | "mainnet" = rpcUrl.includes("devnet") ? "devnet" : "mainnet";
+
   try {
-    const rpcUrl = options.rpcUrl ?? getRpcUrl();
     const payer = loadKeypairFromEnv();
     const plan = buildLaunchConfig(launch.asset, strategy);
     const deployment = await deployLaunch(
@@ -73,6 +89,24 @@ export async function deployLaunchById(id: string, options: DeployOptions = {}):
         rpcUrl,
         quoteMint: options.quoteMint,
         configParameters: plan.configParameters,
+        // Record the mint the moment it exists so a retry refuses to re-mint.
+        onCheckpoint: (cp) => {
+          updateLaunchRecord(id, {
+            deployment: {
+              launchId: id,
+              strategyId: strategy.strategyId,
+              dataSource: network,
+              network,
+              rpcUrl,
+              configAddress: cp.configAddress ?? "",
+              poolAddress: cp.poolAddress ?? "",
+              baseMint: cp.baseMint,
+              transactionSignatures: cp.transactionSignatures,
+              transactionState: cp.phase === "pool_created" ? "confirmed" : "confirming",
+              deployedAt: cp.updatedAt,
+            },
+          });
+        },
       },
       payer,
     );
@@ -80,13 +114,19 @@ export async function deployLaunchById(id: string, options: DeployOptions = {}):
       strategy,
       deployment,
       status: "live",
-      dataSource: "devnet",
+      dataSource: network,
     });
     if (!updated) throw new Error(`Launch ${id} disappeared during deployment.`);
     return updated;
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    updateLaunchRecord(id, { status: "failed", error: message });
+    if (err instanceof PartialDeploymentError) {
+      updateLaunchRecord(id, { status: "partially_deployed", error: err.recovery });
+    } else {
+      updateLaunchRecord(id, {
+        status: "failed",
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
     throw err;
   }
 }

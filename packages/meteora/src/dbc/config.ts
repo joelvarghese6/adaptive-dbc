@@ -2,8 +2,6 @@ import {
   ActivationType,
   BaseFeeMode,
   CollectFeeMode,
-  DammV2DynamicFeeMode,
-  MigratedCollectFeeMode,
   MigrationFeeOption,
   MigrationOption,
   TokenAuthorityOption,
@@ -14,7 +12,23 @@ import {
 import type { AssetProfile, StrategyRecommendation } from "@adaptive/shared";
 import { ConfigurationError, validateAssetProfile } from "@adaptive/shared";
 import type { LaunchConfigPlan } from "./types.js";
-import { assertDammV2Migration, validateLaunchInputs } from "./validation.js";
+import {
+  assertDammV2Migration,
+  assertDeployableConfig,
+  validateLaunchInputs,
+  validateMigrationFee,
+  type MigrationFeePercentage,
+} from "./validation.js";
+
+/**
+ * DBC migration fees are whole percentages on-chain (u8): `feePercentage` must
+ * be 0..99 and `creatorFeePercentage` 0..100. A fractional value is rejected by
+ * the SDK at runtime inside `createConfig` — after a devnet deploy has already
+ * created its base mint. 0.25 is not representable, so the closest whole
+ * percentage (0) is used. The intended 0.25% fee on the *graduated* pool is
+ * preserved separately by `MigrationFeeOption.FixedBps25`.
+ */
+const MIGRATION_FEE: MigrationFeePercentage = { feePercentage: 0, creatorFeePercentage: 0 };
 
 function toTokenDecimal(decimals: number): TokenDecimal {
   switch (decimals) {
@@ -44,6 +58,8 @@ export function buildLaunchConfig(
   validateAssetProfile(asset);
   validateLaunchInputs(asset, strategy);
   assertDammV2Migration(MigrationOption.MET_DAMM_V2);
+  // Validate the fixed migration fee before any curve math or chain work.
+  validateMigrationFee(MIGRATION_FEE);
 
   const { parameters } = strategy;
 
@@ -82,16 +98,11 @@ export function buildLaunchConfig(
     },
     migration: {
       migrationOption: MigrationOption.MET_DAMM_V2,
+      // FixedBps25 pins the graduated DAMM v2 pool base fee to 25 bps. A custom
+      // `migratedPoolFee` is only honored for MigrationFeeOption.Customizable,
+      // so it is intentionally omitted here (the SDK ignores it otherwise).
       migrationFeeOption: MigrationFeeOption.FixedBps25,
-      migrationFee: {
-        feePercentage: 0.25,
-        creatorFeePercentage: 0,
-      },
-      migratedPoolFee: {
-        collectFeeMode: MigratedCollectFeeMode.QuoteToken,
-        dynamicFee: DammV2DynamicFeeMode.Disabled,
-        poolFeeBps: 30,
-      },
+      migrationFee: MIGRATION_FEE,
     },
     liquidityDistribution: {
       partnerPermanentLockedLiquidityPercentage: 0,
@@ -123,6 +134,10 @@ export function buildLaunchConfig(
       },
     );
   }
+
+  // Re-assert on the built config so a fractional migration fee can never reach
+  // the chain, regardless of what the SDK does with the inputs.
+  assertDeployableConfig(configParameters);
 
   return {
     strategyId: strategy.strategyId,

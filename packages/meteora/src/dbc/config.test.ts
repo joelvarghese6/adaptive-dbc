@@ -2,7 +2,11 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import type { AssetProfile, StrategyRecommendation } from "@adaptive/shared";
 import { buildLaunchConfig } from "./config.js";
-import { assertDammV2Migration } from "./validation.js";
+import {
+  assertDammV2Migration,
+  assertDeployableConfig,
+  validateMigrationFee,
+} from "./validation.js";
 
 const asset: AssetProfile = {
   name: "Adaptive Real Estate",
@@ -73,6 +77,63 @@ describe("meteora config", () => {
     assert.throws(
       () => buildLaunchConfig({ ...asset, totalSupply: 1_000 }, strategy),
       /Infeasible DBC curve/,
+    );
+  });
+
+  it("emits a whole-number migration fee (regression: 0.25 was rejected by the SDK before submission)", () => {
+    const plan = buildLaunchConfig(asset, strategy);
+    const params = plan.configParameters as {
+      migrationFee: { feePercentage: number; creatorFeePercentage: number };
+      migrationFeeOption: number;
+      migratedPoolFee: { poolFeeBps: number };
+    };
+    assert.ok(
+      Number.isInteger(params.migrationFee.feePercentage),
+      "feePercentage must be a whole number",
+    );
+    assert.equal(params.migrationFee.feePercentage, 0);
+    assert.equal(params.migrationFee.creatorFeePercentage, 0);
+    // FixedBps25 (0) governs the graduated pool base fee; a custom migratedPoolFee
+    // is only honored for Customizable, so the built config keeps the SDK default.
+    assert.equal(params.migrationFeeOption, 0);
+    assert.equal(params.migratedPoolFee.poolFeeBps, 0);
+  });
+
+  it("rejects fractional and out-of-range migration fees before building", () => {
+    assert.throws(
+      () => validateMigrationFee({ feePercentage: 0.25, creatorFeePercentage: 0 }),
+      /whole percentage/,
+    );
+    assert.throws(
+      () => validateMigrationFee({ feePercentage: 100, creatorFeePercentage: 0 }),
+      /within 0\.\.99/,
+    );
+    assert.throws(
+      () => validateMigrationFee({ feePercentage: 0, creatorFeePercentage: 5 }),
+      /creatorFeePercentage/,
+    );
+    assert.doesNotThrow(() => validateMigrationFee({ feePercentage: 0, creatorFeePercentage: 0 }));
+  });
+
+  it("guards a deployable config before any chain work", () => {
+    const plan = buildLaunchConfig(asset, strategy);
+    assert.doesNotThrow(() => assertDeployableConfig(plan.configParameters));
+    assert.throws(
+      () =>
+        assertDeployableConfig({
+          migrationOption: 1,
+          migrationFee: { feePercentage: 0.25, creatorFeePercentage: 0 },
+        }),
+      /whole percentage/,
+    );
+    assert.throws(() => assertDeployableConfig({ migrationOption: 1 }), /migration fee settings/);
+    assert.throws(
+      () =>
+        assertDeployableConfig({
+          migrationOption: 0,
+          migrationFee: { feePercentage: 0, creatorFeePercentage: 0 },
+        }),
+      /DAMM v2/,
     );
   });
 });

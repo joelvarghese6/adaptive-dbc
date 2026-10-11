@@ -10,6 +10,9 @@ __v0_jsx-dev-runtime.ts
 .env*.local
 .env
 
+# Local devnet launch checkpoints (may reference on-chain state)
+.devnet-launches/
+
 # Common ignores
 node_modules
 .next/

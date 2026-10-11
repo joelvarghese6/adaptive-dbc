@@ -1,5 +1,8 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   analyzeLaunch,
   createLaunch,
@@ -7,7 +10,13 @@ import {
   getLaunchStatus,
   simulateLaunch,
 } from "./services/index.js";
-import { clearLaunchRecords } from "./store.js";
+import {
+  clearLaunchRecords,
+  hydrateLaunchRecords,
+  persistLaunchRecords,
+  resetHydrationForTests,
+  updateLaunchRecord,
+} from "./store.js";
 
 const asset = {
   name: "Adaptive Real Estate",
@@ -55,6 +64,69 @@ describe("api orchestration", () => {
       await assert.rejects(() => deployLaunchById(created.id), /SOLANA_PRIVATE_KEY/);
     } finally {
       if (saved !== undefined) process.env["SOLANA_PRIVATE_KEY"] = saved;
+    }
+  });
+
+  it("refuses to re-deploy a launch that already has a base mint", async () => {
+    clearLaunchRecords();
+    const created = createLaunch(asset);
+    updateLaunchRecord(created.id, {
+      status: "partially_deployed",
+      deployment: {
+        launchId: created.id,
+        strategyId: "RWA_LONG_V1",
+        dataSource: "devnet",
+        network: "devnet",
+        rpcUrl: "https://api.devnet.solana.com",
+        configAddress: "",
+        poolAddress: "",
+        baseMint: "So11111111111111111111111111111111111111112",
+        transactionSignatures: [],
+        transactionState: "failed",
+        deployedAt: new Date().toISOString(),
+      },
+    });
+    await assert.rejects(
+      () => deployLaunchById(created.id),
+      /already has a base mint/,
+    );
+  });
+
+  it("refuses to re-deploy after a simulated restart restores the mint record", async () => {
+    clearLaunchRecords();
+    const dir = mkdtempSync(join(tmpdir(), "adaptive-api-store-"));
+    const file = join(dir, "launches.json");
+    try {
+      const created = createLaunch(asset);
+      updateLaunchRecord(created.id, {
+        status: "partially_deployed",
+        deployment: {
+          launchId: created.id,
+          strategyId: "RWA_LONG_V1",
+          dataSource: "devnet",
+          network: "devnet",
+          rpcUrl: "https://api.devnet.solana.com",
+          configAddress: "",
+          poolAddress: "",
+          baseMint: "So11111111111111111111111111111111111111112",
+          transactionSignatures: [],
+          transactionState: "failed",
+          deployedAt: new Date().toISOString(),
+        },
+      });
+      persistLaunchRecords(file);
+
+      clearLaunchRecords();
+      resetHydrationForTests();
+      hydrateLaunchRecords(file);
+
+      await assert.rejects(
+        () => deployLaunchById(created.id),
+        /already has a base mint/,
+      );
+    } finally {
+      clearLaunchRecords();
+      rmSync(dir, { recursive: true, force: true });
     }
   });
 });
